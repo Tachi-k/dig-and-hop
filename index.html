@@ -154,13 +154,16 @@ function updateItems(p){for(const it of items){it.t--;it.vy=Math.min(14,it.vy+.4
   items=items.filter(it=>it.t>0&&!it.got);
   for(const q of popups){q.t--;q.y-=.6}popups=popups.filter(q=>q.t>0)}
 
+// MP3の共通音量。HTML AudioとWeb Audioで同じ値を使う。
+const MP3_VOLUME=.2;
+
 // ===== 効果音 =====
 // ステージクリアのジングルはBGMの種類にかかわらず1回だけ再生する。
 const stageClearAudio=new Audio('audio/stage-clear.mp3');
-stageClearAudio.preload='auto';stageClearAudio.volume=.7;
+stageClearAudio.preload='auto';stageClearAudio.volume=MP3_VOLUME;
 function stopStageClearAudio(){stageClearAudio.pause();stageClearAudio.currentTime=0}
 const bossIntroAudio=new Audio('audio/boss-intro.mp3'),bossClearAudio=new Audio('audio/boss-clear.mp3');
-for(const audio of [bossIntroAudio,bossClearAudio]){audio.preload='auto';audio.volume=.7}
+for(const audio of [bossIntroAudio,bossClearAudio]){audio.preload='auto';audio.volume=MP3_VOLUME}
 let bossClearDone=true;
 function stopBossSounds(){for(const audio of [bossIntroAudio,bossClearAudio]){audio.pause();audio.currentTime=0}bossClearDone=true}
 function playBossIntro(){if(mode!=='game')return;bossIntroAudio.currentTime=0;try{bossIntroAudio.play().catch(()=>{})}catch(_){}}
@@ -322,7 +325,7 @@ const mp3={};let mp3Cur=null;
 function mp3Key(song){if(!mp3Enabled)return null;const key=song==='field'&&stage===1?'field1':song;return MP3_BGM[key]?.src?key:null}
 function mp3Get(key){if(key in mp3)return mp3[key];const cfg=MP3_BGM[key];if(!cfg)return mp3[key]=null;
   const m=mp3[key]={cfg,el:null,elBad:false,buf:null,bufBad:false,loading:false,engine:'el',src:null,gain:null,pos:0,lastCtxT:0,reqT:0,elT0:0,elOK:false};
-  try{const a=new Audio(cfg.src);a.preload='auto';a.loop=false;a.volume=.6;a.preservesPitch=true;a.mozPreservesPitch=true;a.webkitPreservesPitch=true;
+  try{const a=new Audio(cfg.src);a.preload='auto';a.loop=false;a.volume=MP3_VOLUME;a.preservesPitch=true;a.mozPreservesPitch=true;a.webkitPreservesPitch=true;
     a.addEventListener('error',()=>{m.elBad=true});a.addEventListener('ended',()=>{if(mp3Cur===key){a.currentTime=cfg.loopStart||0;a.play().catch(()=>{})}});m.el=a;}catch(_){m.elBad=true}
   return m}
 function mp3Load(m){if(!m||m.buf||m.bufBad||m.loading||!audioCtx)return;m.loading=true;
@@ -332,7 +335,7 @@ function mp3Load(m){if(!m||m.buf||m.bufBad||m.loading||!audioCtx)return;m.loadin
 function mp3Wrap(m,t){const c=m.cfg;if(c.loopEnd&&t>=c.loopEnd)t=c.loopStart+((t-c.loopStart)%(c.loopEnd-c.loopStart));return Math.max(0,t)}
 function mp3StopBuf(m){if(m&&m.src){try{m.src.stop()}catch(_){}m.src=null}}
 function mp3StartBuf(m,rate){mp3StopBuf(m);const c=m.cfg,src=audioCtx.createBufferSource();src.buffer=m.buf;src.loop=true;src.loopStart=c.loopStart||0;src.loopEnd=c.loopEnd||m.buf.duration;src.playbackRate.value=rate;
-  if(!m.gain){m.gain=audioCtx.createGain();m.gain.gain.value=.7;m.gain.connect(audioCtx.destination);}src.connect(m.gain);src.start(0,mp3Wrap(m,m.pos));m.src=src;m.lastCtxT=audioCtx.currentTime;}
+  if(!m.gain){m.gain=audioCtx.createGain();m.gain.gain.value=MP3_VOLUME;m.gain.connect(audioCtx.destination);}src.connect(m.gain);src.start(0,mp3Wrap(m,m.pos));m.src=src;m.lastCtxT=audioCtx.currentTime;}
 function mp3Halt(key){const m=mp3[key];if(!m)return;if(m.src&&audioCtx)m.pos=mp3Wrap(m,m.pos+(audioCtx.currentTime-m.lastCtxT)*m.src.playbackRate.value);if(m.el&&!m.el.paused){try{m.el.pause()}catch(_){}}if(m.engine==='el'&&m.el)m.pos=m.el.currentTime;mp3StopBuf(m);}
 function mp3Restart(key){const m=mp3[key];if(!m)return;m.pos=0;try{if(m.el)m.el.currentTime=0}catch(_){}if(m.src&&audioCtx){mp3StopBuf(m);}}
 function mp3PlayEl(m){if(!m.el||m.elBad)return;try{m.el.currentTime=mp3Wrap(m,m.pos)}catch(_){}m.reqT=Date.now();m.elT0=m.el.currentTime;m.elOK=false;const pr=m.el.play();if(pr&&pr.catch)pr.catch(()=>{m.elBad=true});}
