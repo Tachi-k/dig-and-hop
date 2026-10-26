@@ -22,6 +22,7 @@ canvas{display:block;background:#17283c}
 .topbtns{position:absolute;top:calc(env(safe-area-inset-top) + 8px);right:calc(env(safe-area-inset-right) + 8px);display:flex;gap:8px;z-index:5}
 .topbtns button{width:44px;height:44px;border-radius:12px;border:0;background:rgba(23,40,60,.55);color:#fff;font-size:22px;padding:0;touch-action:none}
 #music.off{opacity:.6}
+.topbtns #changeBgm{width:auto;padding:0 10px;font:700 13px system-ui;touch-action:manipulation}
 #startBtn{position:absolute;left:50%;top:60%;transform:translateX(-50%);z-index:6;font:900 32px system-ui;letter-spacing:2px;padding:14px 52px;border-radius:44px;border:0;background:#ffdf50;color:#20304a;box-shadow:0 6px 0 #c9971e,0 10px 24px #0006;touch-action:manipulation;animation:pulse 1.1s ease-in-out infinite}
 #startBtn:active{transform:translateX(-50%) translateY(4px);box-shadow:0 2px 0 #c9971e}
 @keyframes pulse{50%{scale:1.07}}
@@ -63,7 +64,7 @@ canvas{display:block;background:#17283c}
 </div>
 <p class="help">← → / A D 移動・スペースでジャンプ（移動キーと同時押しで斜めジャンプ）・X で穴掘り・M で音楽ON/OFF・R でやり直し</p>
 <button id="startBtn">▶ START</button>
-<div class="topbtns"><button id="music" aria-label="音楽">🎵</button><button id="fs" aria-label="全画面">⛶</button></div>
+<div class="topbtns"><button id="changeBgm" aria-label="BGM変更" aria-pressed="false">BGM変更：オリジナル</button><button id="music" aria-label="音楽">🎵</button><button id="fs" aria-label="全画面">⛶</button></div>
 </div>
 <script>
 const c=document.querySelector('canvas'),x=c.getContext('2d'),W=960,H=540,ground=465;
@@ -153,7 +154,7 @@ function victoryMusic(){if(mode==='title')return;try{audioCtx=audioCtx||new (win
 // iPhone対策：①消音スイッチでも鳴るよう再生モードに ②指を離した瞬間に音声を解放 ③停止(interrupted)からの復帰
 let silentEl=null;
 function silentWavUrl(){const n=800,b=new ArrayBuffer(44+n),v=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,'data');v.setUint32(40,n,true);for(let i=0;i<n;i++)v.setUint8(44+i,128);return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))}
-function unlockAudio(){try{if(mp3Cur){const m=mp3[mp3Cur];if(m&&m.engine==='el'&&m.el&&m.el.paused&&!m.elBad){const pr=m.el.play();if(pr&&pr.catch)pr.catch(()=>{});}}}catch(_){}
+function unlockAudio(){try{if(mp3Cur){const m=mp3[mp3Cur];if(m&&musicOn&&!paused&&!document.hidden&&mp3Enabled&&m.engine==='el'&&m.el&&m.el.paused&&!m.elBad){const pr=m.el.play();if(pr&&pr.catch)pr.catch(()=>{});}}}catch(_){}
   try{
   if(navigator.audioSession){try{navigator.audioSession.type='playback'}catch(_){}}
   audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
@@ -276,16 +277,27 @@ SONGS.basement={len:32,dur:()=>60/128/2/hurryMul(),step(i,t,sd){const bar=i>>3,b
 SONGS.bonus={len:32,dur:()=>60/150/2,step(i,t,sd){const bar=i>>3,b=i%8,m=BS_MEL[i];if(m){bnote(mf(m+5),t,sd*.7,'square',.04);bnote(mf(m+17),t,sd*.3,'sine',.04);}bnote(mf(BS_ROOT[bar]+5+(b%2?12:0)),t,sd*.7,'triangle',.11);if(b%2===0)bnote(150,t,.1,'sine',.18,50);hat(t,.025);if(b===4)hat(t,.06,.1);}};
 function currentSong(){if(mode==='title')return null;if(inBasement&&state==='play')return roomKind==='basement'?'basement':'bonus';if(state==='ending')return endingRare?'rare':endingPair?'wedding':'ending';if(state!=='play')return null;if(bossIntroLong())return null;if(arenaOn&&boss&&boss.st!=='dead')return 'boss';return stage===2?'field2':'field'}
 // ===== MP3のBGM（用意した場面だけ差し替え。読めない時は今までの曲が鳴る） =====
-// 場面 → MP3ファイル（HTMLと同じ場所に置く）。loopStart/loopEnd の区間をつなぎ目なくくり返す
-const MP3_BGM={field1:{src:'bgm-stage1.mp3',loopStart:10,loopEnd:89.6833}};
+// 場面 → MP3ファイル（HTMLからの相対パス）。loopStart/loopEnd でループ区間を指定できる。
+// 未登録の場面ではオリジナルBGMを再生。ループ区間未指定なら曲全体を繰り返す。
+const MP3_BGM={
+  field1:{src:'audio/bgm-stage1_1.mp3'},
+  field2:{src:'audio/bgm-stage2.mp3'}, // 2面
+  boss:{src:'audio/bgm-boss.mp3'}, // 2面後半のボス戦
+  bonus:{src:'audio/bgm-bonus.mp3'}, // ボーナスステージ
+  ending:{src:'audio/bgm-ending-solo.mp3'}, // 一人エンディング
+  wedding:{src:'audio/bgm-ending-pair.mp3'}, // ソラ姫との2人エンディング
+  rare:{src:'audio/bgm-ending-rare.mp3'} // レアエンディング
+};
+let mp3Enabled=false;
+try{mp3Enabled=localStorage.getItem('dig-hop-mp3')==='on'}catch(_){}
 // 再生のしかたは2通り：①<audio>（音程を変えずに速くできる） ②Web Audio（iPhoneでも確実に鳴る）。
 // ①が1.2秒たっても鳴り始めなければ、自動で②に切り替える。②も読めなければ今までの曲。
 const mp3={};let mp3Cur=null;
-function mp3Key(song){if(song==='field'&&stage===1)return 'field1';return null}
+function mp3Key(song){if(!mp3Enabled)return null;const key=song==='field'&&stage===1?'field1':song;return MP3_BGM[key]?.src?key:null}
 function mp3Get(key){if(key in mp3)return mp3[key];const cfg=MP3_BGM[key];if(!cfg)return mp3[key]=null;
   const m=mp3[key]={cfg,el:null,elBad:false,buf:null,bufBad:false,loading:false,engine:'el',src:null,gain:null,pos:0,lastCtxT:0,reqT:0,elT0:0,elOK:false};
   try{const a=new Audio(cfg.src);a.preload='auto';a.loop=false;a.volume=.6;a.preservesPitch=true;a.mozPreservesPitch=true;a.webkitPreservesPitch=true;
-    a.addEventListener('error',()=>{m.elBad=true});a.addEventListener('ended',()=>{if(mp3Cur===key){a.currentTime=cfg.loopStart;a.play().catch(()=>{})}});m.el=a;}catch(_){m.elBad=true}
+    a.addEventListener('error',()=>{m.elBad=true});a.addEventListener('ended',()=>{if(mp3Cur===key){a.currentTime=cfg.loopStart||0;a.play().catch(()=>{})}});m.el=a;}catch(_){m.elBad=true}
   return m}
 function mp3Load(m){if(!m||m.buf||m.bufBad||m.loading||!audioCtx)return;m.loading=true;
   fetch(m.cfg.src).then(r=>{if(!r.ok)throw new Error('http');return r.arrayBuffer()})
@@ -541,7 +553,7 @@ function startDemo(){mode='title';{const k=demoIdx%2===0?1:2,list=DEMO_SEEDS[k];
   if(demoIdx%2===0)loadStage(1);else{loadStage(2);player.x=AX+80;player.y=ground-42;}
   demoIdx++;bannerT=0;}
 function toTitle(){const b=document.getElementById('startBtn');if(b)b.style.display='block';startDemo();}
-function startGame(){mode='game';Math.random=realRandom;unlockAudio();try{const m=mp3Get('field1');if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
+function startGame(){mode='game';Math.random=realRandom;unlockAudio();try{const m=mp3Enabled?mp3Get('field1'):null;if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
 // デモ用の自動操作
 function demoAI(){const p=player;keys.left=keys.right=keys.jump=false;digHold=false;   // デモも無敵ではない（ぶつかればミス）
   if(p.on)demoHop=false;else if(demoHop&&p.vy<-7.5)p.vy=-7.5;   // 穴を越えるだけなら小ジャンプ
@@ -959,6 +971,20 @@ const mb=document.getElementById('music');
 function setMusic(on){musicOn=on;mb.textContent=on?'🎵':'🔇';mb.classList.toggle('off',!on);try{localStorage.setItem('skyhop-music',on?'on':'off')}catch(_){}if(bgmBus&&audioCtx)bgmBus.gain.setTargetAtTime(on?1:0,audioCtx.currentTime,.02)}
 mb.addEventListener('pointerdown',e=>{e.preventDefault();e.stopPropagation();unlockAudio();setMusic(!musicOn)});
 setMusic(musicOn);
+
+// あらかじめ用意したMP3とオリジナルBGMを切り替える。
+const changeBgm=document.getElementById('changeBgm');
+function updateBgmButton(){changeBgm.textContent='BGM変更：'+(mp3Enabled?'MP3':'オリジナル');changeBgm.setAttribute('aria-pressed',String(mp3Enabled))}
+changeBgm.addEventListener('click',e=>{
+  e.stopPropagation();unlockAudio();
+  if(mp3Cur){mp3Halt(mp3Cur);mp3Cur=null}
+  mp3Enabled=!mp3Enabled;
+  try{localStorage.setItem('dig-hop-mp3',mp3Enabled?'on':'off')}catch(_){}
+  curSong=null;bgmNext=0;bgmStep=0;
+  if(mp3Enabled)setMusic(true);
+  updateBgmButton();bgmTick();
+});
+updateBgmButton();
 
 // 全画面ボタン（対応端末のみ：主にAndroid）
 const fs=document.getElementById('fs'),root=document.documentElement;
