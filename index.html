@@ -92,6 +92,7 @@ function addPerchEnemies(idx){const floats=platforms.filter(b=>b.y<ground-1&&(st
 function banner(t,s,d=150){bannerText=t;bannerSub=s;bannerT=d}
 function loadStage(n){
   stopStageClearAudio();
+  stopBossSounds();
   stage=n;stageStartScore=score;try{if(n===1)mp3Restart('field1')}catch(_){}balls=[];cannonWarn=null;cannonT=60*8;lastSafeX=60;bonusUsed[n]=false;crossed1=false;leftHold=0;roomKind='basement';inBasement=false;surface=null;secret={x:n===1?2520:840,used:false};items=[];popups=[];spots=[];holes=[];digCooldown=0;deathTick=0;goalTick=0;camera=0;coins=[];enemies=[];platforms=[];rocks=[];waves=[];parts=[];boss=null;arenaOn=false;shake=0;
   if(n===1){
     world=4300;
@@ -158,6 +159,17 @@ function updateItems(p){for(const it of items){it.t--;it.vy=Math.min(14,it.vy+.4
 const stageClearAudio=new Audio('audio/stage-clear.mp3');
 stageClearAudio.preload='auto';stageClearAudio.volume=.7;
 function stopStageClearAudio(){stageClearAudio.pause();stageClearAudio.currentTime=0}
+const bossIntroAudio=new Audio('audio/boss-intro.mp3'),bossClearAudio=new Audio('audio/boss-clear.mp3');
+for(const audio of [bossIntroAudio,bossClearAudio]){audio.preload='auto';audio.volume=.7}
+let bossClearDone=true;
+function stopBossSounds(){for(const audio of [bossIntroAudio,bossClearAudio]){audio.pause();audio.currentTime=0}bossClearDone=true}
+function playBossIntro(){if(mode!=='game')return;bossIntroAudio.currentTime=0;try{bossIntroAudio.play().catch(()=>{})}catch(_){}}
+function playBossClear(){
+  if(mode!=='game')return;
+  bossClearDone=false;bossClearAudio.currentTime=0;
+  bossClearAudio.onended=bossClearAudio.onerror=()=>{bossClearDone=true};
+  try{bossClearAudio.play().catch(()=>{bossClearDone=true})}catch(_){bossClearDone=true}
+}
 function victoryMusic(){
   if(mode==='title')return;
   stopStageClearAudio();
@@ -289,7 +301,7 @@ SONGS.basement={len:32,dur:()=>60/128/2/hurryMul(),step(i,t,sd){const bar=i>>3,b
   if(b%4===0)bnote(140,t,.1,'sine',.18,50);if(b%4===2)hat(t,.05,.08);if(b%2===1)hat(t,.02);
   if(i%8===7)bell(m?m+12:88,t,.015);}};
 SONGS.bonus={len:32,dur:()=>60/150/2,step(i,t,sd){const bar=i>>3,b=i%8,m=BS_MEL[i];if(m){bnote(mf(m+5),t,sd*.7,'square',.04);bnote(mf(m+17),t,sd*.3,'sine',.04);}bnote(mf(BS_ROOT[bar]+5+(b%2?12:0)),t,sd*.7,'triangle',.11);if(b%2===0)bnote(150,t,.1,'sine',.18,50);hat(t,.025);if(b===4)hat(t,.06,.1);}};
-function currentSong(){if(mode==='title')return null;if(inBasement&&state==='play')return roomKind==='basement'?'basement':'bonus';if(state==='ending')return endingRare?'rare':endingPair?'wedding':'ending';if(state!=='play')return null;if(bossIntroLong())return null;if(arenaOn&&boss&&boss.st!=='dead')return 'boss';return stage===2?'field2':'field'}
+function currentSong(){if(mode==='title')return null;if(inBasement&&state==='play')return roomKind==='basement'?'basement':'bonus';if(state==='ending')return endingRare?'rare':endingPair?'wedding':'ending';if(state!=='play')return null;if(bossIntroLong()||(arenaOn&&boss&&boss.st==='dead'))return null;if(arenaOn&&boss&&boss.st!=='dead')return 'boss';return stage===2?'field2':'field'}
 // ===== MP3のBGM（用意した場面だけ差し替え。読めない時は今までの曲が鳴る） =====
 // 場面 → MP3ファイル（HTMLからの相対パス）。loopStart/loopEnd でループ区間を指定できる。
 // 未登録の場面ではオリジナルBGMを再生。ループ区間未指定なら曲全体を繰り返す。
@@ -397,7 +409,7 @@ function bossEscape(){const b=boss;holes=holes.filter(h=>h!==b.hole);b.hole=null
 function updateBoss(p,oldY){
   const b=boss;b.t++;if(b.inv>0)b.inv--;if(b.flash>0)b.flash--;
   const phase=b.hp>=3?1:b.hp===2?2:3,L=AX,R=AX+960-b.w,top=ground-b.h;
-  if(b.st==='intro'){const cx=b.x+b.w/2;
+  if(b.st==='intro'){if(b.t===1)playBossIntro();const cx=b.x+b.w/2;
     if(b.short){b.y=top;if(b.t>40){bgo('walk');banner('','穴を掘って 大王を落とし、頭をふめ！',120)}}
     else{b.pt=(b.pt||0)+1;if(!b.phase)b.phase='rumble';
       if(b.phase==='rumble'){b.y=ground+30;shake=Math.max(shake,2+b.pt/12);if(b.pt%5===0)boom(cx+(Math.random()-.5)*90,ground,3,['#c9a27a','#8a6a4a'],4);if(b.pt===1||b.pt===40)sound('rumble');   // ゴゴゴ…地鳴り
@@ -426,8 +438,10 @@ function updateBoss(p,oldY){
   else if(b.st==='windup'){if(b.t%6===0)boom(b.x+b.w/2-b.dir*40,ground,2,['#c9a27a'],3);if(b.t>45)bgo('charge')}
   else if(b.st==='charge'){b.x+=b.dir*(4.5+phase);if(b.t%4===0)boom(b.x+b.w/2-b.dir*40,ground,2,['#c9a27a'],3);if(b.x<=L||b.x>=R){shake=14;sound('slam');bgo('walk')}}
   else if(b.st==='stun'){b.y=top+40;if(b.t>(phase===3?150:210))bossEscape()}
-  else if(b.st==='dead'){b.vy+=.3;b.y+=b.vy;if(b.t%8===0){boom(b.x+Math.random()*b.w,Math.min(ground,b.y+Math.random()*b.h),12,['#ffdf50','#ff655e','#fff']);if(b.t%16===0)sound('boom')}
-    if(b.t>210){state='ending';endT=0;parts=[];addTimeBonus();score+=lives*1000;{const r=Math.random();endingRare=r<.1;endingPair=!endingRare&&r<.55;endP=null;if(endingRare)score+=5000;}/* レア10%・2人45%・1人45% */}return}
+  else if(b.st==='dead'){b.vy+=.3;b.y+=b.vy;if(b.t<=210&&b.t%8===0){boom(b.x+Math.random()*b.w,Math.min(ground,b.y+Math.random()*b.h),12,['#ffdf50','#ff655e','#fff']);if(b.t%16===0)sound('boom')}
+    if(b.t>210&&!b.clearPlayed){b.clearPlayed=true;playBossClear();banner('GAME CLEAR!','モグラ大王 ドリモグを たおした！',300)}
+    // 読み込み失敗時や再生停止時にも進行を止めない（最大8秒）。
+    if(b.t>210&&(bossClearDone||b.t>690)){bossClearAudio.pause();state='ending';endT=0;parts=[];addTimeBonus();score+=lives*1000;{const r=Math.random();endingRare=r<.1;endingPair=!endingRare&&r<.55;endP=null;if(endingRare)score+=5000;}/* レア10%・2人45%・1人45% */}return}
   b.x=Math.max(L,Math.min(R,b.x));
   // 完成した穴の上を歩く・突進すると落ちる
   if(b.st==='walk'||b.st==='charge'){const cx=b.x+b.w/2,h=holes.find(h=>h.stage===3&&Math.abs(h.x+h.w/2-cx)<Math.max(12,h.w/2-28)&&!enemies.some(e=>e.alive&&e.trapHole===h));
