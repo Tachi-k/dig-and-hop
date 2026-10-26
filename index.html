@@ -91,6 +91,7 @@ function groundAt(px){return platforms.some(b=>b.y===ground&&px>=b.x&&px<=b.x+b.
 function addPerchEnemies(idx){const floats=platforms.filter(b=>b.y<ground-1&&(stage!==2||b.x+b.w<AX));idx.forEach((k,i)=>{const f=floats[k];if(f)enemies.push(makeEnemy(f.x+f.w/2-16,i%2===1,i+20,f))})}
 function banner(t,s,d=150){bannerText=t;bannerSub=s;bannerT=d}
 function loadStage(n){
+  stopStageClearAudio();
   stage=n;stageStartScore=score;try{if(n===1)mp3Restart('field1')}catch(_){}balls=[];cannonWarn=null;cannonT=60*8;lastSafeX=60;bonusUsed[n]=false;crossed1=false;leftHold=0;roomKind='basement';inBasement=false;surface=null;secret={x:n===1?2520:840,used:false};items=[];popups=[];spots=[];holes=[];digCooldown=0;deathTick=0;goalTick=0;camera=0;coins=[];enemies=[];platforms=[];rocks=[];waves=[];parts=[];boss=null;arenaOn=false;shake=0;
   if(n===1){
     world=4300;
@@ -153,7 +154,17 @@ function updateItems(p){for(const it of items){it.t--;it.vy=Math.min(14,it.vy+.4
   for(const q of popups){q.t--;q.y-=.6}popups=popups.filter(q=>q.t>0)}
 
 // ===== 効果音 =====
-function victoryMusic(){if(mode==='title')return;try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const notes=[[523,0,.13],[659,.14,.13],[784,.28,.13],[1047,.43,.25],[784,.72,.12],[1047,.86,.4],[1175,1.32,.13],[1319,1.47,.13],[1568,1.63,.55]];const start=audioCtx.currentTime+.03;for(const [hz,at,dur] of notes){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';o.frequency.value=hz;g.gain.setValueAtTime(.0001,start+at);g.gain.exponentialRampToValueAtTime(.13,start+at+.015);g.gain.exponentialRampToValueAtTime(.0001,start+at+dur);o.connect(g);g.connect(audioCtx.destination);o.start(start+at);o.stop(start+at+dur+.02)}}catch(e){}}
+// ステージクリアのジングルはBGMの種類にかかわらず1回だけ再生する。
+const stageClearAudio=new Audio('audio/stage-clear.mp3');
+stageClearAudio.preload='auto';stageClearAudio.volume=.7;
+function stopStageClearAudio(){stageClearAudio.pause();stageClearAudio.currentTime=0}
+function victoryMusic(){
+  if(mode==='title')return;
+  stopStageClearAudio();
+  try{const playback=stageClearAudio.play();if(playback)playback.catch(()=>{if(mode==='game'&&state==='clear')originalVictoryMusic()})}
+  catch(_){originalVictoryMusic()}
+}
+function originalVictoryMusic(){if(mode==='title')return;try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const notes=[[523,0,.13],[659,.14,.13],[784,.28,.13],[1047,.43,.25],[784,.72,.12],[1047,.86,.4],[1175,1.32,.13],[1319,1.47,.13],[1568,1.63,.55]];const start=audioCtx.currentTime+.03;for(const [hz,at,dur] of notes){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';o.frequency.value=hz;g.gain.setValueAtTime(.0001,start+at);g.gain.exponentialRampToValueAtTime(.13,start+at+.015);g.gain.exponentialRampToValueAtTime(.0001,start+at+dur);o.connect(g);g.connect(audioCtx.destination);o.start(start+at);o.stop(start+at+dur+.02)}}catch(e){}}
 // iPhone対策：①消音スイッチでも鳴るよう再生モードに ②指を離した瞬間に音声を解放 ③停止(interrupted)からの復帰
 let silentEl=null;
 function silentWavUrl(){const n=800,b=new ArrayBuffer(44+n),v=new DataView(b),w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i))};w(0,'RIFF');v.setUint32(4,36+n,true);w(8,'WAVE');w(12,'fmt ');v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);v.setUint32(24,8000,true);v.setUint32(28,8000,true);v.setUint16(32,1,true);v.setUint16(34,8,true);w(36,'data');v.setUint32(40,n,true);for(let i=0;i<n;i++)v.setUint8(44+i,128);return URL.createObjectURL(new Blob([b],{type:'audio/wav'}))}
