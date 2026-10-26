@@ -161,23 +161,50 @@ const MP3_VOLUME=.2;
 // ステージクリアのジングルはBGMの種類にかかわらず1回だけ再生する。
 const stageClearAudio=new Audio('audio/stage-clear.mp3');
 stageClearAudio.preload='auto';stageClearAudio.volume=MP3_VOLUME;
-function stopStageClearAudio(){stageClearAudio.pause();stageClearAudio.currentTime=0}
+function stopStageClearAudio(){stopJingle(stageClearAudio)}
 const bossIntroAudio=new Audio('audio/boss-intro.mp3'),bossClearAudio=new Audio('audio/boss-clear.mp3');
 for(const audio of [bossIntroAudio,bossClearAudio]){audio.preload='auto';audio.volume=MP3_VOLUME}
-let bossClearDone=true;
-function stopBossSounds(){for(const audio of [bossIntroAudio,bossClearAudio]){audio.pause();audio.currentTime=0}bossClearDone=true}
-function playBossIntro(){if(mode!=='game')return;bossIntroAudio.currentTime=0;try{bossIntroAudio.play().catch(()=>{})}catch(_){}}
-function playBossClear(){
-  if(mode!=='game')return;
-  bossClearDone=false;bossClearAudio.currentTime=0;
-  bossClearAudio.onended=bossClearAudio.onerror=()=>{bossClearDone=true};
-  try{bossClearAudio.play().catch(()=>{bossClearDone=true})}catch(_){bossClearDone=true}
+// 登場音・クリア音も、操作時に解放したWeb Audioで再生する。
+const jingles=new Map();
+function jingleData(audio){
+  if(!jingles.has(audio))jingles.set(audio,{buffer:null,loading:null,source:null,generation:0});
+  return jingles.get(audio);
 }
+function loadJingle(audio){
+  const m=jingleData(audio);
+  if(!audioCtx)return Promise.resolve(null);
+  if(m.buffer)return Promise.resolve(m.buffer);
+  if(!m.loading)m.loading=fetch(audio.src).then(r=>{if(!r.ok)throw Error('jingle HTTP');return r.arrayBuffer()})
+    .then(ab=>new Promise((resolve,reject)=>{audioCtx.decodeAudioData(ab,resolve,reject)}))
+    .then(buffer=>m.buffer=buffer).catch(()=>null).finally(()=>{m.loading=null});
+  return m.loading;
+}
+function stopJingle(audio){
+  const m=jingleData(audio);m.generation++;
+  if(m.source){m.source.onended=null;try{m.source.stop()}catch(_){}m.source=null}
+  audio.pause();audio.currentTime=0;
+}
+function playJingle(audio,done=()=>{},failed=()=>{}){
+  stopJingle(audio);const m=jingleData(audio),generation=m.generation;
+  loadJingle(audio).then(buffer=>{
+    if(generation!==m.generation||mode!=='game')return;
+    if(!buffer||!audioCtx||audioCtx.state!=='running'){failed();done();return}
+    try{
+      const source=audioCtx.createBufferSource(),gain=audioCtx.createGain();
+      source.buffer=buffer;gain.gain.value=MP3_VOLUME;source.connect(gain);gain.connect(audioCtx.destination);
+      m.source=source;source.onended=()=>{gain.disconnect();if(generation===m.generation){m.source=null;done()}};
+      source.start();
+    }catch(_){failed();done()}
+  });
+}
+function preloadJingles(){for(const audio of [stageClearAudio,bossIntroAudio,bossClearAudio])loadJingle(audio)}
+let bossClearDone=true;
+function stopBossSounds(){for(const audio of [bossIntroAudio,bossClearAudio])stopJingle(audio);bossClearDone=true}
+function playBossIntro(){if(mode==='game')playJingle(bossIntroAudio)}
+function playBossClear(){if(mode!=='game')return;bossClearDone=false;playJingle(bossClearAudio,()=>{bossClearDone=true})}
 function victoryMusic(){
   if(mode==='title')return;
-  stopStageClearAudio();
-  try{const playback=stageClearAudio.play();if(playback)playback.catch(()=>{if(mode==='game'&&state==='clear')originalVictoryMusic()})}
-  catch(_){originalVictoryMusic()}
+  playJingle(stageClearAudio,()=>{},()=>{if(mode==='game'&&state==='clear')originalVictoryMusic()});
 }
 function originalVictoryMusic(){if(mode==='title')return;try{audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();audioCtx.resume();const notes=[[523,0,.13],[659,.14,.13],[784,.28,.13],[1047,.43,.25],[784,.72,.12],[1047,.86,.4],[1175,1.32,.13],[1319,1.47,.13],[1568,1.63,.55]];const start=audioCtx.currentTime+.03;for(const [hz,at,dur] of notes){const o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type='triangle';o.frequency.value=hz;g.gain.setValueAtTime(.0001,start+at);g.gain.exponentialRampToValueAtTime(.13,start+at+.015);g.gain.exponentialRampToValueAtTime(.0001,start+at+dur);o.connect(g);g.connect(audioCtx.destination);o.start(start+at);o.stop(start+at+dur+.02)}}catch(e){}}
 // iPhone対策：①消音スイッチでも鳴るよう再生モードに ②指を離した瞬間に音声を解放 ③停止(interrupted)からの復帰
@@ -448,7 +475,7 @@ function updateBoss(p,oldY){
   else if(b.st==='dead'){b.vy+=.3;b.y+=b.vy;if(b.t<=210&&b.t%8===0){boom(b.x+Math.random()*b.w,Math.min(ground,b.y+Math.random()*b.h),12,['#ffdf50','#ff655e','#fff']);if(b.t%16===0)sound('boom')}
     if(b.t>210&&!b.clearPlayed){b.clearPlayed=true;playBossClear();banner('GAME CLEAR!','モグラ大王 ドリモグを たおした！',300)}
     // 読み込み失敗時や再生停止時にも進行を止めない（最大8秒）。
-    if(b.t>210&&(bossClearDone||b.t>690)){bossClearAudio.pause();state='ending';endT=0;parts=[];addTimeBonus();score+=lives*1000;{const r=Math.random();endingRare=r<.1;endingPair=!endingRare&&r<.55;endP=null;if(endingRare)score+=5000;}/* レア10%・2人45%・1人45% */}return}
+    if(b.t>210&&(bossClearDone||b.t>690)){stopJingle(bossClearAudio);state='ending';endT=0;parts=[];addTimeBonus();score+=lives*1000;{const r=Math.random();endingRare=r<.1;endingPair=!endingRare&&r<.55;endP=null;if(endingRare)score+=5000;}/* レア10%・2人45%・1人45% */}return}
   b.x=Math.max(L,Math.min(R,b.x));
   // 完成した穴の上を歩く・突進すると落ちる
   if(b.st==='walk'||b.st==='charge'){const cx=b.x+b.w/2,h=holes.find(h=>h.stage===3&&Math.abs(h.x+h.w/2-cx)<Math.max(12,h.w/2-28)&&!enemies.some(e=>e.alive&&e.trapHole===h));
@@ -588,7 +615,7 @@ function startDemo(){mode='title';{const k=demoIdx%2===0?1:2,list=DEMO_SEEDS[k];
   if(demoIdx%2===0)loadStage(1);else{loadStage(2);player.x=AX+80;player.y=ground-42;}
   demoIdx++;bannerT=0;}
 function toTitle(){const b=document.getElementById('startBtn');if(b)b.style.display='block';startDemo();}
-function startGame(){mode='game';Math.random=realRandom;unlockAudio();mp3Load(mp3Get('field1'));try{const m=mp3Enabled?mp3Get('field1'):null;if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
+function startGame(){mode='game';Math.random=realRandom;unlockAudio();preloadJingles();mp3Load(mp3Get('field1'));try{const m=mp3Enabled?mp3Get('field1'):null;if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
 // デモ用の自動操作
 function demoAI(){const p=player;keys.left=keys.right=keys.jump=false;digHold=false;   // デモも無敵ではない（ぶつかればミス）
   if(p.on)demoHop=false;else if(demoHop&&p.vy<-7.5)p.vy=-7.5;   // 穴を越えるだけなら小ジャンプ
