@@ -321,10 +321,12 @@ let mp3Enabled=false;
 try{mp3Enabled=localStorage.getItem('dig-hop-mp3')==='on'}catch(_){}
 // 再生のしかたは2通り：①<audio>（音程を変えずに速くできる） ②Web Audio（iPhoneでも確実に鳴る）。
 // ①が1.2秒たっても鳴り始めなければ、自動で②に切り替える。②も読めなければ今までの曲。
+// iOSでは通常BGMと同じ、タップで解放したAudioContextからMP3も再生する。
+const mp3UseWebAudio=/iP(hone|ad|od)/.test(navigator.userAgent)||(navigator.platform==='MacIntel'&&navigator.maxTouchPoints>1);
 const mp3={};let mp3Cur=null;
 function mp3Key(song){if(!mp3Enabled)return null;const key=song==='field'&&stage===1?'field1':song;return MP3_BGM[key]?.src?key:null}
 function mp3Get(key){if(key in mp3)return mp3[key];const cfg=MP3_BGM[key];if(!cfg)return mp3[key]=null;
-  const m=mp3[key]={cfg,el:null,elBad:false,buf:null,bufBad:false,loading:false,engine:'el',src:null,gain:null,pos:0,lastCtxT:0,reqT:0,elT0:0,elOK:false};
+  const m=mp3[key]={cfg,el:null,elBad:false,buf:null,bufBad:false,loading:false,engine:mp3UseWebAudio?'buf':'el',src:null,gain:null,pos:0,lastCtxT:0,reqT:0,elT0:0,elOK:false};
   try{const a=new Audio(cfg.src);a.preload='auto';a.loop=false;a.volume=MP3_VOLUME;a.preservesPitch=true;a.mozPreservesPitch=true;a.webkitPreservesPitch=true;
     a.addEventListener('error',()=>{m.elBad=true});a.addEventListener('ended',()=>{if(mp3Cur===key){a.currentTime=cfg.loopStart||0;a.play().catch(()=>{})}});m.el=a;}catch(_){m.elBad=true}
   return m}
@@ -353,7 +355,7 @@ function mp3Tick(){   // MP3の再生開始を確認してから通常BGMを止�
       if(!m.started||m.el.paused&&m.elOK){m.started=true;mp3PlayEl(m);}
       try{m.el.playbackRate=rate}catch(_){}
       if(!m.elOK&&!m.el.paused&&m.el.currentTime>m.elT0+.05)m.elOK=true;
-      return m.elOK;}}
+      return m.elOK&&!m.el.paused&&m.el.readyState>=3;}}
   // Web Audio で再生
   if(m.buf){if(audioCtx.state!=='running')return false;
     if(!m.src)mp3StartBuf(m,rate);
@@ -1021,7 +1023,16 @@ changeBgm.addEventListener('click',e=>{
   mp3Enabled=!mp3Enabled;
   try{localStorage.setItem('dig-hop-mp3',mp3Enabled?'on':'off')}catch(_){}
   curSong=null;bgmNext=0;bgmStep=0;
-  if(mp3Enabled)setMusic(true);
+  if(mp3Enabled){
+    setMusic(true);
+    // 再生要求とAudioContextの復帰をクリック処理内で行い、iOSの操作制限に対応。
+    unlockAudio();
+    const key=mp3Key(currentSong());
+    if(key&&!paused&&mode==='game'&&!document.hidden){
+      const m=mp3Get(key);mp3Load(m);mp3Cur=key;m.started=true;
+      if(m.engine==='el')mp3PlayEl(m);
+    }
+  }
   updateBgmButton();bgmTick();
 });
 updateBgmButton();
