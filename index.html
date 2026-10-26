@@ -214,13 +214,13 @@ function unlockAudio(){try{if(mp3Cur){const m=mp3[mp3Cur];if(m&&musicOn&&!paused
   try{
   if(navigator.audioSession){try{navigator.audioSession.type='playback'}catch(_){}}
   audioCtx=audioCtx||new (window.AudioContext||window.webkitAudioContext)();
-  if(audioCtx.state!=='running')audioCtx.resume();
+  if(audioCtx.state!=='running'&&audioCtx.state!=='closed')audioCtx.resume().catch(()=>{});
   if(!audioCtx._primed){const s=audioCtx.createBufferSource();s.buffer=audioCtx.createBuffer(1,1,22050);s.connect(audioCtx.destination);s.start(0);audioCtx._primed=true}
   // 古いiOS向け：無音の音声を流して再生モードに切り替える
   if(!navigator.audioSession&&!silentEl&&/iP(hone|ad|od)|Macintosh/.test(navigator.userAgent)&&'ontouchend' in document){silentEl=new Audio(silentWavUrl());silentEl.loop=true;silentEl.setAttribute('playsinline','');const pr=silentEl.play();if(pr&&pr.catch)pr.catch(()=>{silentEl=null})}
 }catch(e){}}
-['touchend','pointerup','click','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{capture:true,passive:true}));
-function tone(hz,duration,type='square',volume=.09,delay=0,endHz=null){if(!audioCtx||mode==='title')return;try{let t=audioCtx.currentTime+delay,o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.setValueAtTime(Math.max(1,hz),t);if(endHz)o.frequency.exponentialRampToValueAtTime(Math.max(1,endHz),t+duration);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(volume,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+duration);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+duration+.02);}catch(e){}}
+['touchstart','pointerdown','touchend','pointerup','click','keydown'].forEach(ev=>document.addEventListener(ev,unlockAudio,{capture:true,passive:true}));
+function tone(hz,duration,type='square',volume=.09,delay=0,endHz=null){if(mode==='title')return;unlockAudio();if(!audioCtx)return;try{let t=audioCtx.currentTime+delay,o=audioCtx.createOscillator(),g=audioCtx.createGain();o.type=type;o.frequency.setValueAtTime(Math.max(1,hz),t);if(endHz)o.frequency.exponentialRampToValueAtTime(Math.max(1,endHz),t+duration);g.gain.setValueAtTime(.0001,t);g.gain.exponentialRampToValueAtTime(volume,t+.008);g.gain.exponentialRampToValueAtTime(.0001,t+duration);o.connect(g);g.connect(audioCtx.destination);o.start(t);o.stop(t+duration+.02);}catch(e){}}
 const vib={dig:12,stomp:30,bury:45,chain:[40,30,40,30,80],treasure:30,oneup:[30,30,30],hurt:[70,40,140],slam:40,bosshit:[60,30,90],boom:80};
 function buzz(kind){try{if(vib[kind]&&navigator.vibrate)navigator.vibrate(vib[kind])}catch(e){}}
 function pinSound(n){if(mode==='title')return;tone(420+n*55,.1,'square',.07,0,900+n*70);tone(1600+n*40,.05,'triangle',.04,.03);buzz('stomp');}
@@ -354,6 +354,8 @@ const mp3={};let mp3Cur=null;
 function mp3Key(song){if(!mp3Enabled)return null;const key=song==='field'&&stage===1?'field1':song;return MP3_BGM[key]?.src?key:null}
 function mp3Get(key){if(key in mp3)return mp3[key];const cfg=MP3_BGM[key];if(!cfg)return mp3[key]=null;
   const m=mp3[key]={cfg,el:null,elBad:false,buf:null,bufBad:false,loading:false,engine:mp3UseWebAudio?'buf':'el',src:null,gain:null,pos:0,lastCtxT:0,reqT:0,elT0:0,elOK:false};
+  // iPhoneでは音声要素を作らず、全ステージ共通のWeb Audioだけを使う。
+  if(mp3UseWebAudio)return m;
   try{const a=new Audio(cfg.src);a.preload='auto';a.loop=false;a.volume=MP3_VOLUME;a.preservesPitch=true;a.mozPreservesPitch=true;a.webkitPreservesPitch=true;
     a.addEventListener('error',()=>{m.elBad=true});a.addEventListener('ended',()=>{if(mp3Cur===key){a.currentTime=cfg.loopStart||0;a.play().catch(()=>{})}});m.el=a;}catch(_){m.elBad=true}
   return m}
@@ -396,7 +398,7 @@ function bgmTick(){if(mp3Tick()){curSong=currentSong();bgmNext=0;return}if(!audi
 // 1面の音源はタイトル表示中から先読みする（自動再生はしない）。
 mp3Get('field1');
 setInterval(bgmTick,25);
-function gameOverMusic(){if(!audioCtx||mode==='title')return;[[67,0,.22],[64,.25,.22],[60,.5,.22],[55,.78,.7]].forEach(([m,at,d])=>tone(mf(m),d,'triangle',.12,.05+at))}
+function gameOverMusic(){if(mode==='title')return;unlockAudio();if(!audioCtx)return;[[67,0,.22],[64,.25,.22],[60,.5,.22],[55,.78,.7]].forEach(([m,at,d])=>tone(mf(m),d,'triangle',.12,.05+at))}
 
 // ===== パーティクル =====
 function boom(x0,y0,n,cols,spd=6){for(let i=0;i<n;i++)parts.push({x:x0,y:y0,vx:(Math.random()-.5)*spd,vy:-Math.random()*spd*.8,life:30+Math.random()*20,max:50,col:cols[i%cols.length],s:3+Math.random()*4,g:.2})}
@@ -1023,7 +1025,7 @@ document.addEventListener('contextmenu',e=>e.preventDefault());
 document.addEventListener('dblclick',e=>e.preventDefault());
 
 // アプリ切替時に入力をリセット
-document.addEventListener('visibilitychange',()=>{if(document.hidden)setPause(true);try{if(!document.hidden&&audioCtx&&audioCtx.state!=='running')audioCtx.resume()}catch(_){}keys.left=keys.right=keys.jump=false;padJump=false;digHold=false;last=0;acc=0;document.querySelectorAll('.on').forEach(el=>el.classList.remove('on'))});
+document.addEventListener('visibilitychange',()=>{if(document.hidden)setPause(true);try{if(!document.hidden)unlockAudio()}catch(_){}keys.left=keys.right=keys.jump=false;padJump=false;digHold=false;last=0;acc=0;document.querySelectorAll('.on').forEach(el=>el.classList.remove('on'))});
 
 // スタートボタン（click で開始：iPhoneの音もこの操作で鳴らせる）
 document.getElementById('startBtn').addEventListener('click',e=>{e.stopPropagation();startGame()});
