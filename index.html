@@ -341,7 +341,7 @@ function mp3Restart(key){const m=mp3[key];if(!m)return;m.pos=0;try{if(m.el)m.el.
 function mp3PlayEl(m){if(!m.el||m.elBad)return;try{m.el.currentTime=mp3Wrap(m,m.pos)}catch(_){}m.reqT=Date.now();m.elT0=m.el.currentTime;m.elOK=false;const pr=m.el.play();if(pr&&pr.catch)pr.catch(()=>{m.elBad=true});}
 const BASE_DUR={field:60/140/2};
 function mp3LoopCheck(){const m=mp3Cur&&mp3[mp3Cur];if(!m||m.engine!=='el'||!m.el||m.el.paused)return;const c=m.cfg;if(c.loopEnd&&m.el.currentTime>=c.loopEnd){try{m.el.currentTime-= (c.loopEnd-c.loopStart)}catch(_){}}}
-function mp3Tick(){   // 戻り値 true：MP3（またはその準備中）なので、今までの曲は鳴らさない
+function mp3Tick(){   // MP3の再生開始を確認してから通常BGMを止める。読み込み中は通常BGMを継続。
   const s=currentSong(),want=(!paused&&musicOn&&!document.hidden&&mode==='game'&&audioCtx)?mp3Key(s):null;
   if(want!==mp3Cur){if(mp3Cur)mp3Halt(mp3Cur);mp3Cur=want;if(want){const m=mp3Get(want);if(m){m.started=false;}}}
   if(!want)return false;const m=mp3Get(want);if(!m)return false;
@@ -353,17 +353,19 @@ function mp3Tick(){   // 戻り値 true：MP3（またはその準備中）な�
       if(!m.started||m.el.paused&&m.elOK){m.started=true;mp3PlayEl(m);}
       try{m.el.playbackRate=rate}catch(_){}
       if(!m.elOK&&!m.el.paused&&m.el.currentTime>m.elT0+.05)m.elOK=true;
-      return true;}}
+      return m.elOK;}}
   // Web Audio で再生
-  if(m.buf){if(audioCtx.state!=='running')return true;
+  if(m.buf){if(audioCtx.state!=='running')return false;
     if(!m.src)mp3StartBuf(m,rate);
     else{const now=audioCtx.currentTime;m.pos=mp3Wrap(m,m.pos+(now-m.lastCtxT)*m.src.playbackRate.value);m.lastCtxT=now;m.src.playbackRate.value=rate;}
     return true}
   if(m.bufBad&&m.elBad)return false;            // どちらも使えない → 今までの曲
   if(m.bufBad)return false;
-  return m.loading?(Date.now()-m.reqT<4000):false;   // 読み込み待ち（長すぎる時は今までの曲）
+  return false;   // 読み込み中も通常BGMを継続する。
 }
 function bgmTick(){if(mp3Tick()){curSong=currentSong();bgmNext=0;return}if(!audioCtx||audioCtx.state!=='running')return;if(paused){bgmNext=0;return}const s=currentSong();if(s!==curSong){curSong=s;bgmStep=0;bgmNext=0}if(!s||!musicOn||document.hidden){bgmNext=0;return}const song=SONGS[s],now=audioCtx.currentTime;if(!bgmNext||bgmNext<now)bgmNext=now+.06;while(bgmNext<now+.15){song.step(bgmStep,bgmNext,song.dur());bgmNext+=song.dur();bgmStep=(bgmStep+1)%song.len}}
+// 1面の音源はタイトル表示中から先読みする（自動再生はしない）。
+mp3Get('field1');
 setInterval(bgmTick,25);
 function gameOverMusic(){if(!audioCtx||mode==='title')return;[[67,0,.22],[64,.25,.22],[60,.5,.22],[55,.78,.7]].forEach(([m,at,d])=>tone(mf(m),d,'triangle',.12,.05+at))}
 
@@ -584,7 +586,7 @@ function startDemo(){mode='title';{const k=demoIdx%2===0?1:2,list=DEMO_SEEDS[k];
   if(demoIdx%2===0)loadStage(1);else{loadStage(2);player.x=AX+80;player.y=ground-42;}
   demoIdx++;bannerT=0;}
 function toTitle(){const b=document.getElementById('startBtn');if(b)b.style.display='block';startDemo();}
-function startGame(){mode='game';Math.random=realRandom;unlockAudio();try{const m=mp3Enabled?mp3Get('field1'):null;if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
+function startGame(){mode='game';Math.random=realRandom;unlockAudio();mp3Load(mp3Get('field1'));try{const m=mp3Enabled?mp3Get('field1'):null;if(m&&musicOn){m.pos=0;mp3Load(m);if(m.engine==='el'&&m.el){mp3Cur='field1';m.started=true;mp3PlayEl(m);}}}catch(_){}const b=document.getElementById('startBtn');if(b)b.style.display='none';keys={};digHold=false;padJump=false;digBuf=0;unlockAudio();reset();}
 // デモ用の自動操作
 function demoAI(){const p=player;keys.left=keys.right=keys.jump=false;digHold=false;   // デモも無敵ではない（ぶつかればミス）
   if(p.on)demoHop=false;else if(demoHop&&p.vy<-7.5)p.vy=-7.5;   // 穴を越えるだけなら小ジャンプ
