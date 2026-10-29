@@ -67,7 +67,7 @@ canvas{display:block;background:#17283c}
 </div>
 <p class="help">← → / A D 移動・スペースでジャンプ（移動キーと同時押しで斜めジャンプ）・X で穴掘り・M で音楽ON/OFF・R でやり直し</p>
 <button id="startBtn">▶ START</button>
-<div class="topbtns"><button id="changeBgm" aria-label="MP3に切替。現在は元のBGM" aria-pressed="false"><small>現在：元のBGM</small>♫ MP3に切替</button><button id="music" aria-label="音楽">🎵</button><button id="fs" aria-label="全画面">⛶</button></div>
+<div class="topbtns"><button id="changeBgm" aria-label="BGM変更。現在：ファミコン風。アレンジ曲に切り替える" aria-pressed="false"><small>現在：ファミコン風</small>♫ BGM変更</button><button id="music" aria-label="音楽">🎵</button><button id="fs" aria-label="全画面">⛶</button></div>
 </div>
 <script>
 const c=document.querySelector('canvas'),x=c.getContext('2d'),W=960,H=540,ground=465;
@@ -344,8 +344,8 @@ const MP3_BGM={
   wedding:{src:'audio/bgm-ending-pair.mp3'}, // ソラ姫との2人エンディング
   rare:{src:'audio/bgm-ending-rare.mp3'} // レアエンディング
 };
+// ページを開いたときは必ずファミコン風BGMから始める。
 let mp3Enabled=false;
-try{mp3Enabled=localStorage.getItem('dig-hop-mp3')==='on'}catch(_){}
 // 再生のしかたは2通り：①<audio>（音程を変えずに速くできる） ②Web Audio（iPhoneでも確実に鳴る）。
 // ①が1.2秒たっても鳴り始めなければ、自動で②に切り替える。②も読めなければ今までの曲。
 // iOSでは通常BGMと同じ、タップで解放したAudioContextからMP3も再生する。
@@ -1039,18 +1039,18 @@ setMusic(musicOn);
 // あらかじめ用意したMP3とオリジナルBGMを切り替える。
 const changeBgm=document.getElementById('changeBgm');
 function updateBgmButton(){
-  const current=mp3Enabled?'MP3':'元のBGM',action=mp3Enabled?'元のBGMに戻す':'MP3に切替';
+  const current=mp3Enabled?'アレンジ曲':'ファミコン風',next=mp3Enabled?'ファミコン風':'アレンジ曲';
   changeBgm.replaceChildren();
   const status=document.createElement('small');status.textContent='現在：'+current;
-  changeBgm.append(status,document.createTextNode('♫ '+action));
-  changeBgm.setAttribute('aria-label',action+'。現在は'+current);
+  changeBgm.append(status,document.createTextNode('♫ BGM変更'));
+  changeBgm.setAttribute('aria-label','BGM変更。現在：'+current+'。'+next+'に切り替える');
+  changeBgm.title=next+'に切り替える';
   changeBgm.setAttribute('aria-pressed',String(mp3Enabled));
 }
 changeBgm.addEventListener('click',e=>{
   e.stopPropagation();unlockAudio();
   if(mp3Cur){mp3Halt(mp3Cur);mp3Cur=null}
   mp3Enabled=!mp3Enabled;
-  try{localStorage.setItem('dig-hop-mp3',mp3Enabled?'on':'off')}catch(_){}
   curSong=null;bgmNext=0;bgmStep=0;
   if(mp3Enabled){
     setMusic(true);
